@@ -1,0 +1,6 @@
+streamlit>=1.18.1
+pandas
+numpy
+matplotlib
+pydeck
+plotly
