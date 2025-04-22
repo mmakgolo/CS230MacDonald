@@ -7,7 +7,7 @@ import plotly.express as px
 
 # ─── Page Config ─────────────────────────────────────────────────────
 st.set_page_config(
-    page_title="Interactive Data Explorer – Top2000 Global Companies",
+    page_title="Top2000 Global Companies Explorer",
     layout="wide"
 )
 
@@ -45,16 +45,18 @@ def filter_df(data: pd.DataFrame) -> pd.DataFrame:
 filtered = filter_df(df)
 
 # ─── Tabs ────────────────────────────────────────────────────────────
-tabs = st.tabs([
-    "Bar Chart",
-    "Interactive Scatter",
-    "Interactive OSM Map",
-    "Top List",
-    "Interactive Histogram",
-    "Summary Stats"
-])
+tab_titles = [
+    "Market Value Rankings",
+    "Sales & Profits Analysis",
+    "Global Locations",
+    "Company Leaderboard",
+    "Profit Margin Distribution",
+    "Statistical Overview",
+    "Key Insights"
+]
+tabs = st.tabs(tab_titles)
 
-# ─── 1) Bar Chart (Plotly) ───────────────────────────────────────────
+# ─── 1) Market Value Rankings ────────────────────────────────────────
 with tabs[0]:
     st.subheader(f"Top {n} Companies by Market Value")
     top_df = filtered.nlargest(n, "Market Value ($billion)")
@@ -64,19 +66,21 @@ with tabs[0]:
         y="Market Value ($billion)",
         text=top_df["Market Value ($billion)"].round(1),
         labels={"Market Value ($billion)": "Market Value (B USD)"},
-        title=f"Top {n} by Market Value"
+        title="Market Value Rankings"
     )
     fig.update_traces(
         marker_color="indianred",
-        hovertemplate="<b>%{x}</b><br>Value: %{y:.1f} B"
+        hovertemplate="<b>%{x}</b><br>Value: %{y:.1f} B USD"
     )
     fig.update_layout(xaxis_tickangle=-45, margin={"t":40,"b":150})
     st.plotly_chart(fig, use_container_width=True)
 
-# ─── 2) Interactive Scatter (Plotly) ────────────────────────────────
+# ─── 2) Sales & Profits Analysis ─────────────────────────────────────
 with tabs[1]:
-    st.subheader("Sales vs Profits (Interactive)")
-    scatter_df = filtered.dropna(subset=["Sales ($billion)", "Profits ($billion)", "Continent"])
+    st.subheader("Sales vs. Profits")
+    scatter_df = filtered.dropna(
+        subset=["Sales ($billion)", "Profits ($billion)", "Continent"]
+    )
     if scatter_df.empty:
         st.info("No data to plot.")
     else:
@@ -92,26 +96,30 @@ with tabs[1]:
                 "Profits ($billion)": "Profits (B USD)",
                 "Market Value ($billion)": "Market Value (B USD)"
             },
-            title="Sales vs Profits by Continent"
+            title="Sales & Profits by Continent"
         )
-        fig.update_traces(marker=dict(opacity=0.7, line=dict(width=0.5, color='white')))
+        fig.update_traces(marker=dict(opacity=0.7, line=dict(width=0.5, color="white")))
         st.plotly_chart(fig, use_container_width=True)
 
-# ─── 3) Interactive OSM Map (PyDeck) ─────────────────────────────────
+# ─── 3) Global Locations ─────────────────────────────────────────────
 with tabs[2]:
-    st.subheader("Company Locations (Stamen Terrain)")
+    st.subheader("Global Company Locations")
     map_df = filtered.dropna(subset=["Latitude", "Longitude"])
     if map_df.empty:
         st.info("No location data to display.")
     else:
         midpoint = (map_df["Latitude"].mean(), map_df["Longitude"].mean())
+
+        # OSM TileLayer
         tile_layer = pdk.Layer(
             "TileLayer",
             data=None,
-            get_tile_data="http://tile.stamen.com/terrain/{z}/{x}/{y}.png",
+            get_tile_data="https://a.tile.openstreetmap.org/{z}/{x}/{y}.png",
             tile_size=256,
             opacity=1.0
         )
+
+        # Scatter points
         scatter_layer = pdk.Layer(
             "ScatterplotLayer",
             data=map_df,
@@ -121,33 +129,37 @@ with tabs[2]:
             pickable=True,
             get_fill_color=[34, 139, 34, 180]
         )
+
         view_state = pdk.ViewState(
             latitude=midpoint[0],
             longitude=midpoint[1],
             zoom=2,
             pitch=0
         )
+
         deck = pdk.Deck(
             layers=[tile_layer, scatter_layer],
             initial_view_state=view_state,
             tooltip={
-                "html": "<b>{Company}</b><br>Value: {Market Value ($billion)} B",
+                "html": "<b>{Company}</b><br>Market Value: {Market Value ($billion)} B USD",
                 "style": {"backgroundColor": "black", "color": "white"}
             }
         )
         st.pydeck_chart(deck, use_container_width=True)
 
-# ─── 4) Top List ─────────────────────────────────────────────────────
+# ─── 4) Company Leaderboard ──────────────────────────────────────────
 with tabs[3]:
-    st.subheader(f"Top {n} List")
+    st.subheader(f"Top {n} Companies List")
     st.dataframe(filtered.nlargest(n, "Market Value ($billion)").reset_index(drop=True))
 
-# ─── 5) Interactive Histogram (Plotly) ──────────────────────────────
+# ─── 5) Profit Margin Distribution ──────────────────────────────────
 with tabs[4]:
-    st.subheader("Profit‑Margin Distribution")
+    st.subheader("Profit Margin Distribution")
     hist_df = filtered.dropna(subset=["Sales ($billion)", "Profits ($billion)"]).copy()
     hist_df = hist_df[hist_df["Sales ($billion)"] > 0]
-    hist_df["Profit Margin (%)"] = (hist_df["Profits ($billion)"] / hist_df["Sales ($billion)"]) * 100
+    hist_df["Profit Margin (%)"] = (
+        hist_df["Profits ($billion)"] / hist_df["Sales ($billion)"]
+    ) * 100
     hist_df = hist_df[np.isfinite(hist_df["Profit Margin (%)"])]
     if hist_df.empty:
         st.info("No valid profit‑margin data.")
@@ -156,15 +168,15 @@ with tabs[4]:
             hist_df,
             x="Profit Margin (%)",
             nbins=bins,
-            title="Profit Margin (%)",
+            title="Profit Margin Histogram",
             labels={"count": "Frequency"}
         )
         fig.update_layout(bargap=0.1)
         st.plotly_chart(fig, use_container_width=True)
 
-# ─── 6) Summary Stats ────────────────────────────────────────────────
+# ─── 6) Statistical Overview ─────────────────────────────────────────
 with tabs[5]:
-    st.subheader("Summary Statistics")
+    st.subheader("Statistical Overview")
     stats_df = filtered[[
         "Sales ($billion)",
         "Profits ($billion)",
@@ -178,3 +190,25 @@ with tabs[5]:
         desc.index = ["Mean", "Median", "Std", "Min", "Max"]
         st.table(desc)
 
+# ─── 7) Key Insights ─────────────────────────────────────────────────
+with tabs[6]:
+    st.subheader("Key Insights by Continent")
+    if filtered.empty:
+        st.info("No data to analyze.")
+    else:
+        # Company count per continent
+        count_df = (
+            filtered["Continent"]
+            .value_counts()
+            .rename_axis("Continent")
+            .reset_index(name="Company Count")
+        )
+        st.table(count_df)
+
+        # Total market value per continent
+        sum_df = (
+            filtered.groupby("Continent")["Market Value ($billion)"]
+            .sum().round(2)
+            .reset_index(name="Total Market Value (B USD)")
+        )
+        st.table(sum_df)
