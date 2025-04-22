@@ -42,7 +42,7 @@ mv_min, mv_max = st.sidebar.slider(
     float(df['Market Value ($billion)'].max()),
     (float(df['Market Value ($billion)'].min()), float(df['Market Value ($billion)'].max()))
 )
-pm_min, pm_max = pm_range = st.sidebar.slider(
+pm_min, pm_max = st.sidebar.slider(
     'Profit Margin Range (%)',
     0.0,
     100.0,
@@ -60,7 +60,6 @@ def filter_df(data):
         d = d[d['Continent'] == continent]  # [DA5]
     return d
 
-# Apply filters
 filtered = filter_df(df)
 filtered = filtered[
     (filtered['Market Value ($billion)'] >= mv_min) &
@@ -69,8 +68,7 @@ filtered = filtered[
     (filtered['Profit Margin (%)'] <= pm_max)
 ].copy()
 
-# For Matplotlib Charts
-df_f = filtered
+df_f = filtered  # for Matplotlib Charts
 
 # Tabs
 tabs = st.tabs([
@@ -100,8 +98,7 @@ with tabs[1]:
     else:
         fig = px.scatter(
             scatter, x='Sales ($billion)', y='Profits ($billion)',
-            color='Continent', size='Market Value ($billion)',
-            hover_name='Company',
+            color='Continent', size='Market Value ($billion)', hover_name='Company',
             labels={'Sales ($billion)': 'Sales (B USD)', 'Profits ($billion)': 'Profits (B USD)'},
             title='Sales & Profits Analysis'
         )
@@ -111,26 +108,46 @@ with tabs[1]:
 # 3) Global Locations Map
 with tabs[2]:
     st.subheader('Global Company Locations')
-    map_df = filtered.dropna(subset=['Latitude', 'Longitude'])
+    map_df = filtered.dropna(subset=["Latitude", "Longitude"])
     if map_df.empty:
-        st.info('No location data.')
+        st.info("No location data to display.")
     else:
-        midpoint = (map_df['Latitude'].mean(), map_df['Longitude'].mean())
+        midpoint = (map_df["Latitude"].mean(), map_df["Longitude"].mean())
+
+        # OSM TileLayer
         tile_layer = pdk.Layer(
-            'TileLayer', data=None,
-            get_tile_data='https://a.tile.openstreetmap.org/{z}/{x}/{y}.png',
-            tile_size=256, opacity=1.0
+            "TileLayer",
+            data=None,
+            get_tile_data="https://a.tile.openstreetmap.org/{z}/{x}/{y}.png",
+            tile_size=256,
+            opacity=1.0
         )
+
+        # Scatter points
         scatter_layer = pdk.Layer(
-            'ScatterplotLayer', data=map_df,
-            get_position=['Longitude', 'Latitude'], get_radius=50000, radius_units='meters',
-            pickable=True, get_fill_color=[34, 139, 34, 180]
+            "ScatterplotLayer",
+            data=map_df,
+            get_position=["Longitude", "Latitude"],
+            get_radius=4,
+            radiusUnits="pixels",
+            pickable=True,
+            get_fill_color=[34, 139, 34, 180]
         )
-        view_state = pdk.ViewState(latitude=midpoint[0], longitude=midpoint[1], zoom=2, pitch=0)
+
+        view_state = pdk.ViewState(
+            latitude=midpoint[0],
+            longitude=midpoint[1],
+            zoom=2,
+            pitch=0
+        )
+
         deck = pdk.Deck(
-            layers=[tile_layer, scatter_layer], initial_view_state=view_state,
-            tooltip={'html': '<b>{Company}</b><br>MV: {Market Value ($billion)} B USD',
-                     'style': {'backgroundColor': 'black', 'color': 'white'}}
+            layers=[tile_layer, scatter_layer],
+            initial_view_state=view_state,
+            tooltip={
+                "html": "<b>{Company}</b><br>Market Value: {Market Value ($billion)} B USD",
+                "style": {"backgroundColor": "black", "color": "white"}
+            }
         )
         st.pydeck_chart(deck, use_container_width=True)
 
@@ -181,7 +198,6 @@ with tabs[6]:
 
 # 8) Matplotlib Charts ([CHART1],[CHART2],[SEA1],[SEA2])
 with tabs[7]:
-    df_f = filtered
     st.subheader('Histogram of Market Value')
     plt.figure()
     df_f['Market Value ($billion)'].dropna().hist(bins=n)
