@@ -4,3 +4,5 @@ numpy
 matplotlib
 pydeck
 plotly
+seaborn 
+folium
