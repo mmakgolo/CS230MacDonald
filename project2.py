@@ -1,3 +1,9 @@
+"""
+Name: Olorato MacDonald Makgolo    CS230: Section 6    Data: Top 2000 Global Companies
+URL: https://cs230macdonald-ccruy8dswatyhy5jz6mzpn.streamlit.app/
+Description: An interactive explorer of the Top2000 Global Companies
+"""
+
 import streamlit as st
 import pandas as pd
 import numpy as np
