@@ -54,23 +54,26 @@ tabs = st.tabs([
     "Summary Stats"
 ])
 
-# ─── 1) Bar Chart ─────────────────────────────────────────────────────
+# ─── 1) Bar Chart (Plotly) ───────────────────────────────────────────
 with tabs[0]:
-    st.subheader(f"Top {n} by Market Value")
+    st.subheader(f"Top {n} Companies by Market Value")
     top_df = filtered.nlargest(n, "Market Value ($billion)")
-    fig, ax = plt.subplots(figsize=(10, 4))
-    ax.bar(top_df["Company"], top_df["Market Value ($billion)"])
-    ax.set_ylabel("Market Value ($ B)")
-    ax.set_xticklabels(top_df["Company"], rotation=90)
-    for bar in ax.patches:
-        ax.annotate(
-            f"{bar.get_height():.1f}",
-            (bar.get_x() + bar.get_width() / 2, bar.get_height()),
-            ha="center", va="bottom", fontsize=8
-        )
-    st.pyplot(fig)
+    fig = px.bar(
+        top_df,
+        x="Company",
+        y="Market Value ($billion)",
+        text=top_df["Market Value ($billion)"].round(1),
+        labels={"Market Value ($billion)": "Market Value (B USD)"},
+        title=f"Top {n} by Market Value"
+    )
+    fig.update_traces(
+        marker_color="indianred",
+        hovertemplate="<b>%{x}</b><br>Value: %{y:.1f} B"
+    )
+    fig.update_layout(xaxis_tickangle=-45, margin={"t":40,"b":150})
+    st.plotly_chart(fig, use_container_width=True)
 
-# ─── 2) Financial Scatter ─────────────────────────────────────────────
+# ─── 2) Financial Scatter (Matplotlib) ───────────────────────────────
 with tabs[1]:
     st.subheader("Sales vs Profits")
     scatter_df = filtered.dropna(subset=["Sales ($billion)", "Profits ($billion)", "Continent"])
@@ -87,12 +90,11 @@ with tabs[1]:
             s=80,
             color=cmap(i)
         )
-    ax.set_xlabel("Sales ($ B)")
-    ax.set_ylabel("Profits ($ B)")
-    ax.legend(title="Continent")
+    ax.set_xlabel("Sales ($ B)"); ax.set_ylabel("Profits ($ B)")
+    ax.legend(title="Continent", bbox_to_anchor=(1.05, 1), loc="upper left")
     st.pyplot(fig)
 
-# ─── 3) Interactive OSM Map ───────────────────────────────────────────
+# ─── 3) Interactive OSM Map (PyDeck) ─────────────────────────────────
 with tabs[2]:
     st.subheader("Company Locations (OpenStreetMap Tiles)")
     map_df = filtered.dropna(subset=["Latitude", "Longitude"])
@@ -101,7 +103,7 @@ with tabs[2]:
     else:
         midpoint = (map_df["Latitude"].mean(), map_df["Longitude"].mean())
 
-        # 1) OSM base tiles
+        # Base layer: OSM tiles
         tile_layer = pdk.Layer(
             "TileLayer",
             data=None,
@@ -110,12 +112,14 @@ with tabs[2]:
             opacity=1.0
         )
 
-        # 2) Company points
+        # Overlay: very small pixel-radius points so none are lost
         scatter_layer = pdk.Layer(
             "ScatterplotLayer",
             data=map_df,
             get_position=["Longitude", "Latitude"],
-            get_radius=200000,             # meters
+            # use pixels instead of meters
+            get_radius=4,
+            radiusUnits="pixels",
             pickable=True,
             get_fill_color=[220, 20, 60, 180]
         )
@@ -131,7 +135,7 @@ with tabs[2]:
             layers=[tile_layer, scatter_layer],
             initial_view_state=view_state,
             tooltip={
-                "html": "<b>{Company}</b><br/>Value: {Market Value ($billion)} B",
+                "html": "<b>{Company}</b><br/>Value: {Market Value ($billion)} B",
                 "style": {"backgroundColor": "black", "color": "white"}
             }
         )
@@ -140,18 +144,14 @@ with tabs[2]:
 # ─── 4) Top List ──────────────────────────────────────────────────────
 with tabs[3]:
     st.subheader(f"Top {n} List")
-    st.dataframe(
-        filtered.nlargest(n, "Market Value ($billion)").reset_index(drop=True)
-    )
+    st.dataframe(filtered.nlargest(n, "Market Value ($billion)").reset_index(drop=True))
 
 # ─── 5) Interactive Histogram ────────────────────────────────────────
 with tabs[4]:
     st.subheader("Profit‑Margin Histogram (Plotly)")
-    hist_df = filtered.dropna(subset=["Sales ($billion)", "Profits ($billion)"])
-    hist_df = hist_df[hist_df["Sales ($billion)"] > 0].copy()
-    hist_df["Profit Margin (%)"] = (
-        hist_df["Profits ($billion)"] / hist_df["Sales ($billion)"]
-    ) * 100
+    hist_df = filtered.dropna(subset=["Sales ($billion)", "Profits ($billion)"]).copy()
+    hist_df = hist_df[hist_df["Sales ($billion)"] > 0]
+    hist_df["Profit Margin (%)"] = (hist_df["Profits ($billion)"] / hist_df["Sales ($billion)"]) * 100
     hist_df = hist_df[np.isfinite(hist_df["Profit Margin (%)"])]
     if hist_df.empty:
         st.info("No valid profit‑margin data.")
