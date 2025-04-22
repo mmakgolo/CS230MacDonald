@@ -6,7 +6,6 @@ Data: Top 2000 Global Companies
 URL: https://cs230macdonald-ccruy8dswatyhy5jz6mzpn.streamlit.app/
 Description: An interactive explorer of the Top2000 Global Companies
 """
-
 import streamlit as st
 import pandas as pd
 import numpy as np
@@ -24,7 +23,7 @@ st.set_page_config(
 @st.cache_data
 def load_data(path: str) -> pd.DataFrame:
     try:
-        df = pd.read_csv(path)  # [PY3]
+        df = pd.read_csv(path)
     except Exception as e:
         st.error(f"Error loading data: {e}")
         return pd.DataFrame()
@@ -42,10 +41,13 @@ def load_data(path: str) -> pd.DataFrame:
     # [DA7] drop unused column
     df = df.drop(columns=['Ticker'], errors='ignore')
 
-    # [DA9] add normalized Market Value and Profit Margin
+    # [DA9] add normalized Market Value
     mv = df['Market Value ($billion)']
-    df['MV_norm'] = (mv - mv.min()) / (mv.max() - mv.min())  # min-max normalization
+    df['MV_norm'] = (mv - mv.min()) / (mv.max() - mv.min())
+
+    # [DA9] compute Profit Margin and remove infinities
     df['Profit Margin (%)'] = (df['Profits ($billion)'] / df['Sales ($billion)']) * 100
+    df['Profit Margin (%)'].replace([np.inf, -np.inf], np.nan, inplace=True)
 
     return df
 
@@ -59,8 +61,8 @@ continent = st.sidebar.selectbox('Continent', ['All'] + sorted(df['Continent'].d
 max_mv = float(df['Market Value ($billion)'].max())
 min_mv = st.sidebar.slider('Min Market Value (B USD)', 0.0, max_mv, 0.0)
 min_pm = st.sidebar.slider('Min Profit Margin (%)', 0.0, 100.0, 0.0)
-n = st.sidebar.slider('Top N companies', 5, 50, 10)
-bins = st.sidebar.slider('Histogram bins', 5, 50, 20)
+n = st.sidebar.slider('Top N companies', 5, 100, 10)
+bins = st.sidebar.slider('Histogram bins', 5, 100, 20)
 
 def filter_df(data: pd.DataFrame) -> pd.DataFrame:
     conds = []
@@ -76,13 +78,12 @@ def filter_df(data: pd.DataFrame) -> pd.DataFrame:
 filtered = filter_df(df)
 
 # Tabs
-tabs = st.tabs(['Market Value Rankings', 'Sales & Profits', 'Global Map', 'Leaderboard', 'Profit Margin Dist.', 'Stats & Pivot', 'Key Insights'])  # [ST4]
+tabs = st.tabs(['Market Value Rankings', 'Sales & Profits', 'Global Map', 'Leaderboard', 'Profit Margin Dist.', 'Stats & Pivot', 'Key Insights'])
 
 # 1) Market Value Rankings [DA3, DA2]
 with tabs[0]:
     st.subheader(f'Top {n} by Market Value')
     top_df = filtered.nlargest(n, 'Market Value ($billion)')  # [DA3]
-    sorted_df = filtered.sort_values('Market Value ($billion)', ascending=False)  # [DA2]
     fig = px.bar(top_df, x='Company', y='Market Value ($billion)', text=top_df['Market Value ($billion)'].round(1), title='Market Value Rankings')
     fig.update_layout(xaxis_tickangle=-45, margin={'b':150})
     st.plotly_chart(fig, use_container_width=True)
@@ -91,7 +92,8 @@ with tabs[0]:
 with tabs[1]:
     st.subheader('Sales vs. Profits by Continent')
     scatter = filtered.dropna(subset=['Sales ($billion)', 'Profits ($billion)', 'Continent'])
-    if scatter.empty: st.info('No data.')
+    if scatter.empty:
+        st.info('No data.')
     else:
         fig = px.scatter(scatter, x='Sales ($billion)', y='Profits ($billion)', color='Continent', size='Market Value ($billion)', hover_name='Company', title='Sales & Profits Scatter')
         st.plotly_chart(fig, use_container_width=True)
@@ -100,11 +102,15 @@ with tabs[1]:
 with tabs[2]:
     st.subheader('Global Company Locations')
     map_df = filtered.dropna(subset=['Latitude', 'Longitude'])
-    if map_df.empty: st.info('No locations.')
+    if map_df.empty:
+        st.info('No locations.')
     else:
         mid = (map_df['Latitude'].mean(), map_df['Longitude'].mean())
         deck = pdk.Deck(
-            layers=[pdk.Layer('TileLayer', data=None, get_tile_data='https://a.tile.openstreetmap.org/{z}/{x}/{y}.png'), pdk.Layer('ScatterplotLayer', data=map_df, get_position=['Longitude','Latitude'], get_fill_color=[34,139,34], get_radius=3, pickable=True)],
+            layers=[
+                pdk.Layer('TileLayer', data=None, get_tile_data='https://a.tile.openstreetmap.org/{z}/{x}/{y}.png'),
+                pdk.Layer('ScatterplotLayer', data=map_df, get_position=['Longitude','Latitude'], get_fill_color=[34,139,34], get_radius=3, pickable=True)
+            ],
             initial_view_state=pdk.ViewState(latitude=mid[0], longitude=mid[1], zoom=2)
         )
         st.pydeck_chart(deck)
@@ -118,10 +124,9 @@ with tabs[3]:
 # 5) Profit Margin Distribution [DA9]
 with tabs[4]:
     st.subheader('Profit Margin Histogram')
-    pm = filtered.dropna(subset=['Sales ($billion)', 'Profits ($billion)']).copy()
-    pm['Profit Margin (%)'] = (pm['Profits ($billion)'] / pm['Sales ($billion)']) * 100
-    pm = pm[np.isfinite(pm['Profit Margin (%)'])]
-    if pm.empty: st.info('No margins.')
+    pm = filtered.dropna(subset=['Profit Margin (%)']).copy()
+    if pm.empty:
+        st.info('No margins.')
     else:
         fig = px.histogram(pm, x='Profit Margin (%)', nbins=bins, title='Profit Margin (%) Distribution')
         st.plotly_chart(fig, use_container_width=True)
@@ -129,10 +134,11 @@ with tabs[4]:
 # 6) Stats & Pivot Tables [DA6, DA7]
 with tabs[5]:
     st.subheader('Statistical Summary')
-    stats = filtered[['Sales ($billion)','Profits ($billion)','Assets ($billion)','Market Value ($billion)']]
-    if stats.empty: st.info('No stats.')
+    stats = filtered[['Sales ($billion)','Profits ($billion)','Assets ($billion)','Market Value ($billion)','Profit Margin (%)']]
+    if stats.empty:
+        st.info('No stats.')
     else:
-        desc = stats.describe().loc[['mean','50%','std','min','max']]
+        desc = stats[['Sales ($billion)','Profits ($billion)','Assets ($billion)','Market Value ($billion)','Profit Margin (%)']].describe().loc[['mean','50%','std','min','max']]
         desc.index = ['Mean','Median','Std','Min','Max']
         st.table(desc)
         pivot = pd.pivot_table(filtered, index='Continent', values='Profit Margin (%)', aggfunc='mean').round(2)  # [DA6]
@@ -145,16 +151,13 @@ with tabs[5]:
 # 7) Key Insights & DA8
 with tabs[6]:
     st.subheader('Key Insights')
-    # Companies count per continent
     count_df = filtered['Continent'].value_counts().rename_axis('Continent').reset_index(name='Company Count')
     st.markdown('**Companies by Continent**')
     st.table(count_df)
-    # Total MV per continent
     sum_df = filtered.groupby('Continent')['Market Value ($billion)'].sum().round(2).reset_index(name='Total Market Value (B USD)')
     st.markdown('**Total Market Value by Continent**')
     st.table(sum_df)
-    # [DA8] high-normalized companies
-    high_norm = [row['Company'] for _, row in filtered.iterrows() if row['MV_norm'] > 0.9]
+    high_norm = [row['Company'] for _, row in filtered.iterrows() if row['MV_norm'] > 0.9]  # [DA8]
     if high_norm:
         st.write('Companies with MV_norm > 0.9:', ', '.join(high_norm))
     else:
