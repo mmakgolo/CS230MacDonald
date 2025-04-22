@@ -1,19 +1,15 @@
 """
 Name: Olorato MacDonald Makgolo    CS230: Section 6    Data: Top 2000 Global Companies
 URL: https://cs230macdonald-ccruy8dswatyhy5kev.streamlit.app/
-Description: An interactive Streamlit app showcasing Matplotlib, Seaborn, Plotly,
-PyDeck, and Folium visualizations, plus DA1–DA9 pandas demonstrations.
+Description: An interactive Streamlit app showcasing Matplotlib, Plotly,
+PyDeck visualizations, plus DA1–DA9 pandas demonstrations.
 """
 
 import streamlit as st
 import pandas as pd
 import numpy as np
-import matplotlib.pyplot as plt  # [CHART1], [CHART2]
-import seaborn as sns            # [SEA1], [SEA2]
+import matplotlib.pyplot as plt  # [CHART1], [CHART2], [SEA1], [SEA2]
 import pydeck as pdk             # [MAP]
-import folium                    # [FOLIUM1], [FOLIUM2]
-from folium.plugins import HeatMap
-from streamlit_folium import st_folium
 import plotly.express as px
 
 # Page Config
@@ -23,26 +19,27 @@ st.set_page_config(page_title='Top2000 Explorer', layout='wide')
 @st.cache_data
 def load_data(path):
     df = pd.read_csv(path)
-    # convert columns to numeric
+    # [DA1]: convert numeric columns
     for c in ['Market Value ($billion)','Sales ($billion)','Profits ($billion)','Assets ($billion)','Latitude','Longitude']:
         df[c] = pd.to_numeric(df.get(c), errors='coerce')
-    # split location
+    # [DA1]: split location
     if 'Headquarters Location' in df.columns:
         df['City'] = df['Headquarters Location'].apply(lambda s: s.split(',')[0].strip())
         df['State'] = df['Headquarters Location'].apply(lambda s: s.split(',')[1].strip() if ',' in s else '')
-    # drop unused
+    # [DA7]: drop unused
     df.drop(columns=['Ticker'], errors='ignore', inplace=True)
-    # normalized MV
+    # [DA9]: normalize MV
     df['MV_norm'] = (
         df['Market Value ($billion)'] - df['Market Value ($billion)'].min()
     ) / (
         df['Market Value ($billion)'].max() - df['Market Value ($billion)'].min()
     )
-    # profit margin
+    # [DA9]: profit margin and cleanup
     df['Profit Margin (%)'] = (df['Profits ($billion)'] / df['Sales ($billion)']) * 100
     df['Profit Margin (%)'].replace([np.inf, -np.inf], np.nan, inplace=True)
     return df
 
+# Load
 df = load_data('Top2000CompaniesGlobally.csv')
 
 # Sidebar Filters ([DA4],[DA5])
@@ -71,13 +68,12 @@ def apply_filters(df):
 
 df_f = apply_filters(df)
 
-# Tabs
+# Tabs without Folium
 tabs = st.tabs([
-    'Matplotlib','Seaborn','Plotly','PyDeck Map','Folium Maps',
-    'Stats & Pivot','Key Insights','DA Demo'
+    'Matplotlib','Plotly','PyDeck Map','Stats & Pivot','Key Insights','DA Demo'
 ])
 
-# Matplotlib Charts
+# Matplotlib Charts ([CHART1],[CHART2],[SEA1],[SEA2])
 with tabs[0]:
     st.subheader('Histogram of Market Value')
     plt.figure()
@@ -85,30 +81,31 @@ with tabs[0]:
     plt.title('Market Value Distribution')
     plt.xlabel('Market Value (B USD)')
     plt.ylabel('Frequency')
-    st.pyplot(plt)  # [CHART1]
+    st.pyplot(plt)
 
     st.subheader('Boxplot of Profit Margin (%)')
     plt.figure()
     plt.boxplot(df_f['Profit Margin (%)'].dropna())
     plt.title('Profit Margin Boxplot')
     plt.ylabel('Profit Margin (%)')
-    st.pyplot(plt)  # [CHART2]
+    st.pyplot(plt)
 
-# Seaborn Charts
-with tabs[1]:
     st.subheader('Avg Market Value by Continent')
-    plt.figure(figsize=(8,4))
-    sns.barplot(x='Continent', y='Market Value ($billion)', data=df_f)
+    plt.figure()
+    df_f.groupby('Continent')['Market Value ($billion)'].mean().plot(kind='bar')
     plt.xticks(rotation=45)
-    st.pyplot(plt)  # [SEA1]
+    plt.ylabel('Market Value (B USD)')
+    st.pyplot(plt)
 
-    st.subheader('MV_norm vs Profit Margin (%)')
-    plt.figure(figsize=(8,4))
-    sns.scatterplot(x='MV_norm', y='Profit Margin (%)', hue='Continent', data=df_f, alpha=0.7)
-    st.pyplot(plt)  # [SEA2]
+    st.subheader('Normalized MV vs Profit Margin (%)')
+    plt.figure()
+    plt.scatter(df_f['MV_norm'], df_f['Profit Margin (%)'], alpha=0.7)
+    plt.xlabel('MV_norm')
+    plt.ylabel('Profit Margin (%)')
+    st.pyplot(plt)
 
 # Plotly
-with tabs[2]:
+with tabs[1]:
     st.subheader('Sales vs Profits Scatter')
     fig = px.scatter(
         df_f, x='Sales ($billion)', y='Profits ($billion)',
@@ -117,8 +114,8 @@ with tabs[2]:
     )
     st.plotly_chart(fig, use_container_width=True)
 
-# PyDeck Map [MAP]
-with tabs[3]:
+# PyDeck Map ([MAP])
+with tabs[2]:
     st.subheader('Global Company Locations (PyDeck)')
     mdf = df_f.dropna(subset=['Latitude','Longitude'])
     view = pdk.ViewState(
@@ -133,25 +130,8 @@ with tabs[3]:
                     tooltip={'html':'<b>{Company}</b><br>MV: {Market Value ($billion)} B USD'})
     st.pydeck_chart(deck)
 
-# Folium Maps
-with tabs[4]:
-    st.subheader('Folium: Point Map')
-    m1 = folium.Map(location=[mdf['Latitude'].mean(), mdf['Longitude'].mean()], zoom_start=2)
-    for _,r in mdf.iterrows():
-        folium.CircleMarker(
-            location=[r['Latitude'], r['Longitude']], radius=4,
-            popup=r['Company'], color='blue', fill=True
-        ).add_to(m1)
-    st_folium(m1, width=700)  # [FOLIUM1]
-
-    st.subheader('Folium: Heatmap')
-    m2 = folium.Map(location=[mdf['Latitude'].mean(), mdf['Longitude'].mean()], zoom_start=2)
-    heat = HeatMap(mdf[['Latitude','Longitude']].values.tolist(), radius=15)
-    m2.add_child(heat)
-    st_folium(m2, width=700)  # [FOLIUM2]
-
 # Stats & Pivot
-with tabs[5]:
+with tabs[3]:
     st.subheader('Statistical Summary')
     stats = df_f[['Sales ($billion)','Profits ($billion)','Assets ($billion)','Market Value ($billion)','Profit Margin (%)']]
     desc = stats.describe().loc[['mean','50%','std','min','max']]
@@ -167,7 +147,7 @@ with tabs[5]:
     st.table(grp)
 
 # Key Insights
-with tabs[6]:
+with tabs[4]:
     st.subheader('Key Insights')
     st.markdown('**Company Count by Continent**')
     cnt = df_f['Continent'].value_counts().rename_axis('Continent').reset_index(name='Count')
@@ -178,7 +158,7 @@ with tabs[6]:
     st.write(', '.join(high_norm) if high_norm else 'None')
 
 # DA1–DA9 Demo
-with tabs[7]:
+with tabs[5]:
     st.header('DA1–DA9 Demonstrations')
     demo = pd.DataFrame({
         'Operation': ['Clean','Sort','Top N','Filter','Filter Range','Pivot','Group','Iterrows','New Col'],
