@@ -1,11 +1,9 @@
-
-""""
-Name: Olorato MacDonald Makgolo    
-CS230: Section 6    
-Data: Top 2000 Global Companies
+"""
+Name: Olorato MacDonald Makgolo    CS230: Section 6    Data: Top 2000 Global Companies
 URL: https://cs230macdonald-ccruy8dswatyhy5jz6mzpn.streamlit.app/
 Description: An interactive explorer of the Top2000 Global Companies
 """
+
 import streamlit as st
 import pandas as pd
 import numpy as np
@@ -30,8 +28,7 @@ def load_data(path: str) -> pd.DataFrame:
     
     # [DA1] convert key columns to numeric
     for col in ['Market Value ($billion)', 'Sales ($billion)', 'Profits ($billion)', 'Assets ($billion)', 'Latitude', 'Longitude']:
-        if col in df:
-            df[col] = pd.to_numeric(df[col], errors='coerce')
+        df[col] = pd.to_numeric(df[col], errors='coerce') if col in df.columns else df.get(col)
 
     # [DA1] split HQ location into City/State
     if 'Headquarters Location' in df.columns:
@@ -41,11 +38,9 @@ def load_data(path: str) -> pd.DataFrame:
     # [DA7] drop unused column
     df = df.drop(columns=['Ticker'], errors='ignore')
 
-    # [DA9] add normalized Market Value
+    # [DA9] add normalized Market Value and Profit Margin
     mv = df['Market Value ($billion)']
-    df['MV_norm'] = (mv - mv.min()) / (mv.max() - mv.min())
-
-    # [DA9] compute Profit Margin and remove infinities
+    df['MV_norm'] = (mv - mv.min()) / (mv.max() - mv.min())  # min-max normalization
     df['Profit Margin (%)'] = (df['Profits ($billion)'] / df['Sales ($billion)']) * 100
     df['Profit Margin (%)'].replace([np.inf, -np.inf], np.nan, inplace=True)
 
@@ -59,17 +54,27 @@ st.sidebar.header('Filters')
 country = st.sidebar.selectbox('Country', ['All'] + sorted(df['Country'].dropna().unique()))
 continent = st.sidebar.selectbox('Continent', ['All'] + sorted(df['Continent'].dropna().unique()))
 max_mv = float(df['Market Value ($billion)'].max())
-min_mv = st.sidebar.slider('Min Market Value (B USD)', 0.0, max_mv, 0.0)
-min_pm = st.sidebar.slider('Min Profit Margin (%)', 0.0, 100.0, 0.0)
+# two-value slider for profit margin range (min, max)
+pm_min, pm_max = st.sidebar.slider(
+    'Profit Margin (%) Range',
+    0.0, 100.0,
+    (0.0, 100.0),
+    step=0.1
+)
 n = st.sidebar.slider('Top N companies', 5, 100, 10)
 bins = st.sidebar.slider('Histogram bins', 5, 100, 20)
 
+# market value threshold slider
+min_mv = st.sidebar.slider('Min Market Value (B USD)', 0.0, max_mv, 0.0)
+
+# DA5: combine filters
 def filter_df(data: pd.DataFrame) -> pd.DataFrame:
     conds = []
     if country != 'All': conds.append(data['Country'] == country)
     if continent != 'All': conds.append(data['Continent'] == continent)
     conds.append(data['Market Value ($billion)'] >= min_mv)
-    conds.append(data['Profit Margin (%)'] >= min_pm)
+    # filter within PM range
+    conds.append(data['Profit Margin (%)'].between(pm_min, pm_max))
     if conds:
         mask = np.logical_and.reduce(conds)
         data = data[mask]
@@ -78,13 +83,22 @@ def filter_df(data: pd.DataFrame) -> pd.DataFrame:
 filtered = filter_df(df)
 
 # Tabs
-tabs = st.tabs(['Market Value Rankings', 'Sales & Profits', 'Global Map', 'Leaderboard', 'Profit Margin Dist.', 'Stats & Pivot', 'Key Insights'])
+tabs = st.tabs([
+    'Market Value Rankings', 'Sales & Profits', 'Global Map',
+    'Leaderboard', 'Profit Margin Dist.', 'Stats & Pivot', 'Key Insights'
+])
 
 # 1) Market Value Rankings [DA3, DA2]
 with tabs[0]:
     st.subheader(f'Top {n} by Market Value')
     top_df = filtered.nlargest(n, 'Market Value ($billion)')  # [DA3]
-    fig = px.bar(top_df, x='Company', y='Market Value ($billion)', text=top_df['Market Value ($billion)'].round(1), title='Market Value Rankings')
+    fig = px.bar(
+        top_df,
+        x='Company',
+        y='Market Value ($billion)',
+        text=top_df['Market Value ($billion)'].round(1),
+        title='Market Value Rankings'
+    )
     fig.update_layout(xaxis_tickangle=-45, margin={'b':150})
     st.plotly_chart(fig, use_container_width=True)
 
@@ -95,7 +109,15 @@ with tabs[1]:
     if scatter.empty:
         st.info('No data.')
     else:
-        fig = px.scatter(scatter, x='Sales ($billion)', y='Profits ($billion)', color='Continent', size='Market Value ($billion)', hover_name='Company', title='Sales & Profits Scatter')
+        fig = px.scatter(
+            scatter,
+            x='Sales ($billion)',
+            y='Profits ($billion)',
+            color='Continent',
+            size='Market Value ($billion)',
+            hover_name='Company',
+            title='Sales & Profits Scatter'
+        )
         st.plotly_chart(fig, use_container_width=True)
 
 # 3) Global Map [MAP]
@@ -105,13 +127,14 @@ with tabs[2]:
     if map_df.empty:
         st.info('No locations.')
     else:
-        mid = (map_df['Latitude'].mean(), map_df['Longitude'].mean())
+        mid_lat = map_df['Latitude'].mean()
+        mid_lon = map_df['Longitude'].mean()
         deck = pdk.Deck(
             layers=[
                 pdk.Layer('TileLayer', data=None, get_tile_data='https://a.tile.openstreetmap.org/{z}/{x}/{y}.png'),
                 pdk.Layer('ScatterplotLayer', data=map_df, get_position=['Longitude','Latitude'], get_fill_color=[34,139,34], get_radius=3, pickable=True)
             ],
-            initial_view_state=pdk.ViewState(latitude=mid[0], longitude=mid[1], zoom=2)
+            initial_view_state=pdk.ViewState(latitude=mid_lat, longitude=mid_lon, zoom=2)
         )
         st.pydeck_chart(deck)
 
@@ -128,7 +151,12 @@ with tabs[4]:
     if pm.empty:
         st.info('No margins.')
     else:
-        fig = px.histogram(pm, x='Profit Margin (%)', nbins=bins, title='Profit Margin (%) Distribution')
+        fig = px.histogram(
+            pm,
+            x='Profit Margin (%)',
+            nbins=bins,
+            title='Profit Margin (%) Distribution'
+        )
         st.plotly_chart(fig, use_container_width=True)
 
 # 6) Stats & Pivot Tables [DA6, DA7]
@@ -138,7 +166,7 @@ with tabs[5]:
     if stats.empty:
         st.info('No stats.')
     else:
-        desc = stats[['Sales ($billion)','Profits ($billion)','Assets ($billion)','Market Value ($billion)','Profit Margin (%)']].describe().loc[['mean','50%','std','min','max']]
+        desc = stats.describe().loc[['mean','50%','std','min','max']]
         desc.index = ['Mean','Median','Std','Min','Max']
         st.table(desc)
         pivot = pd.pivot_table(filtered, index='Continent', values='Profit Margin (%)', aggfunc='mean').round(2)  # [DA6]
