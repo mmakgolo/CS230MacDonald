@@ -32,8 +32,8 @@ df = load_data("Top2000CompaniesGlobally.csv")
 st.sidebar.header("Filters")
 country = st.sidebar.selectbox("Country", ["All"] + sorted(df["Country"].dropna().unique()))
 continent = st.sidebar.selectbox("Continent", ["All"] + sorted(df["Continent"].dropna().unique()))
-n = st.sidebar.slider("Top N companies", 5, 50, 10)
-bins = st.sidebar.slider("Histogram bins", 5, 50, 20)
+n = st.sidebar.slider("Top N companies", 5, 100, 10)
+bins = st.sidebar.slider("Histogram bins", 5, 100, 20)
 
 def filter_df(data: pd.DataFrame) -> pd.DataFrame:
     if country != "All":
